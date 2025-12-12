@@ -32,7 +32,7 @@ async function callOpenAI(system: string, user: string, modelId: string): Promis
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: modelId || "gpt-5.2",
+      model: modelId || "gpt-5.2-chat-latest",
       messages: [{ role: "system", content: system }, { role: "user", content: user }],
       temperature: 0.3,
     }),
@@ -67,7 +67,7 @@ async function callAnthropic(system: string, user: string, modelId: string): Pro
 async function callGoogle(system: string, user: string, modelId: string): Promise<string> {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_AI_API_KEY missing");
-  const modelName = modelId || "gemini-1.5-pro";
+  const modelName = modelId || "gemini-2.5-pro";
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
