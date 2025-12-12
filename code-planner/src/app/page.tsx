@@ -14,12 +14,22 @@ import { getTemplates, deleteTemplate } from "@/lib/prompt-templates";
 import type { PromptTemplate } from "@/lib/prompt-templates";
 
 type RunResult = { model: string; output: string };
-type RunResponse = { results: RunResult[]; consolidated: string };
+type RunResponse = {
+  results: RunResult[];
+  consolidated: string;
+  meta?: {
+    repo: string;
+    branch: string;
+    selectedFiles: string[];
+    promptImprover: { provider: string; modelId: string | null };
+    consolidator: { provider: string; modelId: string | null };
+  };
+};
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
-  const [files, setFiles] = useState<Array<{ path: string; content: string }>>([]);
   const [userMessage, setUserMessage] = useState<string>("");
+  const [branch, setBranch] = useState<string>("main");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<RunResponse | null>(null);
@@ -29,14 +39,7 @@ export default function Home() {
   const [newTemplateOpen, setNewTemplateOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<PromptTemplate | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [settings, setSettingsState] = useState<Settings>(() => ({
-    models: ["openai", "anthropic", "google"],
-    selectedModels: {
-      openai: null,
-      anthropic: null,
-      google: null,
-    },
-  }));
+  const [settings, setSettingsState] = useState<Settings>(() => getSettings());
 
   const [chats, setChats] = useState(() => [] as ReturnType<typeof listChats>);
   const [activeChatId, setActiveChatIdState] = useState<string | null>(null);
@@ -71,7 +74,6 @@ export default function Home() {
   const selectedTemplate = useMemo(() => templates.find((t) => t.id === selectedTemplateId) ?? null, [templates, selectedTemplateId]);
 
   const resetRunState = () => {
-    setFiles([]);
     setUserMessage("");
     setRunning(false);
     setError(null);
@@ -143,7 +145,11 @@ export default function Home() {
   };
 
   const handleRun = async () => {
-    if (!selectedTemplate || files.length === 0) return;
+    if (!selectedTemplate || !activeChat?.repo) return;
+    if (!userMessage.trim()) {
+      setError("Tell the models what you want to do before running.");
+      return;
+    }
     if (!settings.models.length) {
       setError("Enable at least one model in Settings.");
       return;
@@ -153,18 +159,20 @@ export default function Home() {
     setError(null);
     setResults(null);
     try {
-      const res = await fetch("/api/run", {
+      const res = await fetch("/api/pipeline/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          repo: activeChat.repo,
+          branch,
           template: {
             systemPrompt: selectedTemplate.systemPrompt,
             userPrompt: selectedTemplate.userPrompt,
           },
-              userMessage,
-          files,
+          userMessage,
           models: settings.models,
           selectedModels: settings.selectedModels,
+          pipeline: settings.pipeline,
         }),
       });
       if (!res.ok) {
@@ -285,15 +293,31 @@ export default function Home() {
                 </div>
 
                 <div className="p-5">
+                  <div className="mb-3">
+                    <label htmlFor="run-goal" className="mb-1 block text-xs font-medium text-neutral-700">
+                      What do you want to do?
+                    </label>
+                    <textarea
+                      id="run-goal"
+                      value={userMessage}
+                      onChange={(e) => setUserMessage(e.target.value)}
+                      className="input min-h-24 text-sm"
+                      placeholder='e.g. "Add a copy button for the consolidated plan and show which model generated it."'
+                    />
+                    <div className="mt-1 text-xs text-neutral-500">
+                      This becomes the user message. We’ll refine it, search the repo, then run the models.
+                    </div>
+                  </div>
+
                   <button
                     onClick={handleRun}
-                    disabled={!selectedTemplate || running || files.length === 0 || settings.models.length === 0}
+                    disabled={!selectedTemplate || !activeChat?.repo || running || !userMessage.trim() || settings.models.length === 0}
                     className="btn btn-primary disabled:opacity-50"
                     title={
                       !selectedTemplate
                         ? "Select a template first"
-                        : files.length === 0
-                          ? "Select and fetch files first"
+                        : !userMessage.trim()
+                          ? "Tell the models what you want to do first"
                           : settings.models.length === 0
                             ? "Enable at least one model in Settings"
                             : undefined
@@ -305,9 +329,12 @@ export default function Home() {
                         ? `Run "${selectedTemplate.name}"`
                         : "Run"}
                   </button>
-                  <div className="mt-2 text-sm text-neutral-600">
-                    Files loaded: <span className="font-medium text-neutral-900">{files.length}</span>
-                  </div>
+                  {results?.meta?.selectedFiles?.length ? (
+                    <div className="mt-2 text-sm text-neutral-600">
+                      Files selected:{" "}
+                      <span className="font-medium text-neutral-900">{results.meta.selectedFiles.length}</span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -353,7 +380,10 @@ export default function Home() {
                           Copy
                         </button>
                       </div>
-                      <p className="card-subtitle">Generated by OpenAI ({settings.selectedModels.openai || "gpt-4o-mini"})</p>
+                      <p className="card-subtitle">
+                        Generated by {results.meta?.consolidator?.provider ?? settings.pipeline.consolidator.provider} (
+                        {results.meta?.consolidator?.modelId ?? settings.pipeline.consolidator.modelId ?? "default"})
+                      </p>
                     </div>
                     <div className="p-5">
                       <pre className="whitespace-pre-wrap text-sm text-neutral-800">{results.consolidated}</pre>
@@ -366,9 +396,8 @@ export default function Home() {
             <div className="space-y-8">
               <RepoBrowser
                 repo={activeChat?.repo ?? null}
-                onFilesFetched={setFiles}
-                userMessage={userMessage}
-                onUserMessageChange={setUserMessage}
+                branch={branch}
+                onBranchChange={setBranch}
               />
             </div>
           </div>

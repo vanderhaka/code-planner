@@ -6,9 +6,20 @@ export type ModelSelection = {
   google: string | null;
 };
 
+export type PipelineStageModel = {
+  provider: ModelId;
+  modelId: string | null;
+};
+
+export type PipelineSettings = {
+  promptImprover: PipelineStageModel;
+  consolidator: PipelineStageModel;
+};
+
 export type Settings = {
   models: ModelId[];
   selectedModels: ModelSelection;
+  pipeline: PipelineSettings;
 };
 
 const SETTINGS_KEY = "code-planner-settings";
@@ -16,9 +27,13 @@ const SETTINGS_KEY = "code-planner-settings";
 const DEFAULT_SETTINGS: Settings = {
   models: ["openai", "anthropic", "google"],
   selectedModels: {
-    openai: null,
-    anthropic: null,
-    google: null,
+    openai: "gpt-5.2-chat-latest",
+    anthropic: "claude-sonnet-4-5",
+    google: "gemini-2.5-pro",
+  },
+  pipeline: {
+    promptImprover: { provider: "openai", modelId: "gpt-5.2-chat-latest" },
+    consolidator: { provider: "openai", modelId: "gpt-5.2-chat-latest" },
   },
 };
 
@@ -36,15 +51,29 @@ export function getSettings(): Settings {
 
     const selectedModels: ModelSelection = parsed.selectedModels
       ? {
-          openai: parsed.selectedModels.openai ?? null,
-          anthropic: parsed.selectedModels.anthropic ?? null,
-          google: parsed.selectedModels.google ?? null,
+          openai: parsed.selectedModels.openai ?? DEFAULT_SETTINGS.selectedModels.openai,
+          anthropic: parsed.selectedModels.anthropic ?? DEFAULT_SETTINGS.selectedModels.anthropic,
+          google: parsed.selectedModels.google ?? DEFAULT_SETTINGS.selectedModels.google,
         }
       : DEFAULT_SETTINGS.selectedModels;
+
+    const pipeline: PipelineSettings = parsed.pipeline
+      ? {
+          promptImprover: {
+            provider: parsed.pipeline.promptImprover?.provider ?? DEFAULT_SETTINGS.pipeline.promptImprover.provider,
+            modelId: parsed.pipeline.promptImprover?.modelId ?? DEFAULT_SETTINGS.pipeline.promptImprover.modelId,
+          },
+          consolidator: {
+            provider: parsed.pipeline.consolidator?.provider ?? DEFAULT_SETTINGS.pipeline.consolidator.provider,
+            modelId: parsed.pipeline.consolidator?.modelId ?? DEFAULT_SETTINGS.pipeline.consolidator.modelId,
+          },
+        }
+      : DEFAULT_SETTINGS.pipeline;
 
     return {
       models: models.length ? models : DEFAULT_SETTINGS.models,
       selectedModels,
+      pipeline,
     };
   } catch {
     return DEFAULT_SETTINGS;

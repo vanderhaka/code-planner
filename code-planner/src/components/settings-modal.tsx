@@ -91,6 +91,11 @@ export function SettingsModal({ open, settings, onClose, onSave }: Props) {
 
   const enabled = new Set(settings.models);
 
+  const ensureEnabled = (id: ModelId) => {
+    if (enabled.has(id)) return settings.models;
+    return [...settings.models, id];
+  };
+
   const toggle = (id: ModelId) => {
     const next = new Set(enabled);
     if (next.has(id)) {
@@ -123,6 +128,34 @@ export function SettingsModal({ open, settings, onClose, onSave }: Props) {
         ...settings.selectedModels,
         [provider]: modelId || null,
       },
+      pipeline: settings.pipeline,
+    });
+  };
+
+  const handlePipelineProviderChange = (stage: "promptImprover" | "consolidator", provider: ModelId) => {
+    const nextModels = ensureEnabled(provider);
+    const nextModelId =
+      settings.selectedModels[provider] ??
+      availableModels[provider][0]?.id ??
+      null;
+    onSave({
+      models: nextModels,
+      selectedModels: settings.selectedModels,
+      pipeline: {
+        ...settings.pipeline,
+        [stage]: { provider, modelId: nextModelId },
+      },
+    });
+  };
+
+  const handlePipelineModelChange = (stage: "promptImprover" | "consolidator", modelId: string) => {
+    onSave({
+      models: settings.models,
+      selectedModels: settings.selectedModels,
+      pipeline: {
+        ...settings.pipeline,
+        [stage]: { ...settings.pipeline[stage], modelId: modelId || null },
+      },
     });
   };
 
@@ -148,6 +181,73 @@ export function SettingsModal({ open, settings, onClose, onSave }: Props) {
         </div>
 
         <div className="p-5">
+          <div className="mb-5 rounded-xl border border-neutral-200 p-3">
+            <div className="text-sm font-medium text-neutral-900">Pipeline models</div>
+            <div className="mt-1 text-xs text-neutral-600">
+              Choose which model is used to (1) improve the prompt + generate search JSON, and (2) consolidate outputs.
+            </div>
+
+            <div className="mt-4 grid gap-4">
+              <div>
+                <div className="text-xs font-medium text-neutral-700">Prompt improver</div>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <select
+                    className="input text-xs"
+                    value={settings.pipeline.promptImprover.provider}
+                    onChange={(e) => handlePipelineProviderChange("promptImprover", e.target.value as ModelId)}
+                  >
+                    {(Object.keys(MODEL_LABEL) as ModelId[]).map((id) => (
+                      <option key={id} value={id}>
+                        {MODEL_LABEL[id]}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="input text-xs"
+                    value={settings.pipeline.promptImprover.modelId ?? ""}
+                    onChange={(e) => handlePipelineModelChange("promptImprover", e.target.value)}
+                  >
+                    <option value="">Default</option>
+                    {availableModels[settings.pipeline.promptImprover.provider].map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs font-medium text-neutral-700">Consolidator</div>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <select
+                    className="input text-xs"
+                    value={settings.pipeline.consolidator.provider}
+                    onChange={(e) => handlePipelineProviderChange("consolidator", e.target.value as ModelId)}
+                  >
+                    {(Object.keys(MODEL_LABEL) as ModelId[]).map((id) => (
+                      <option key={id} value={id}>
+                        {MODEL_LABEL[id]}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="input text-xs"
+                    value={settings.pipeline.consolidator.modelId ?? ""}
+                    onChange={(e) => handlePipelineModelChange("consolidator", e.target.value)}
+                  >
+                    <option value="">Default</option>
+                    {availableModels[settings.pipeline.consolidator.provider].map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-4">
             {(Object.keys(MODEL_LABEL) as ModelId[]).map((id) => {
               const isEnabled = enabled.has(id);
