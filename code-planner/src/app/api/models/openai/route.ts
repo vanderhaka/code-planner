@@ -1,58 +1,39 @@
 import { NextResponse } from "next/server";
+import { OPENAI_CHAT_MODELS } from "@/lib/model-catalog";
 
+/**
+ * OpenAI models endpoint.
+ * 
+ * IMPORTANT: OpenAI's /v1/models endpoint is an inventory of all models
+ * and does NOT reliably encode chat capability. We use an allowlist of
+ * known chat-capable models instead of filtering /v1/models to avoid
+ * returning non-chat models that would fail when used with /v1/chat/completions.
+ */
 export async function GET() {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "OPENAI_API_KEY not configured" },
-        { status: 500 }
-      );
-    }
-
-    const res = await fetch("https://api.openai.com/v1/models", {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
+    // Return allowlist directly - no need to call /v1/models
+    // This ensures we only return models that work with /v1/chat/completions
+    const models = OPENAI_CHAT_MODELS.sort((a, b) => {
+      // Prioritize newer models (gpt-4o, gpt-4-turbo) over older ones
+      if (a.id.startsWith("gpt-4o") && !b.id.startsWith("gpt-4o")) return -1;
+      if (!a.id.startsWith("gpt-4o") && b.id.startsWith("gpt-4o")) return 1;
+      if (a.id.startsWith("gpt-4-turbo") && !b.id.startsWith("gpt-4-turbo")) return -1;
+      if (!a.id.startsWith("gpt-4-turbo") && b.id.startsWith("gpt-4-turbo")) return 1;
+      return b.id.localeCompare(a.id); // Newer/lexicographically later first
     });
 
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: `OpenAI API error: ${res.status}` },
-        { status: res.status }
-      );
-    }
-
-    const data = (await res.json()) as { data: Array<{ id: string; object: string; owned_by: string }> };
-
-    // Filter to GPT-5 series CHAT models only.
-    // OpenAI's /v1/models includes many non-chat models; our app uses /v1/chat/completions.
-    // To avoid "This is not a chat model" errors, only include explicit chat models.
-    const chatModels = data.data
-      .filter(
-        (model) =>
-          model.id.startsWith("gpt-5") &&
-          model.object === "model" &&
-          !model.id.includes("deprecated") &&
-          model.id.includes("chat")
-      )
-      .map((model) => ({
-        id: model.id,
-        name: model.id,
-      }))
-      .sort((a, b) => {
-        // Prioritize chat-latest models
-        const aScore = a.id.includes("chat-latest") ? 0 : 1;
-        const bScore = b.id.includes("chat-latest") ? 0 : 1;
-        if (aScore !== bScore) return aScore - bScore;
-        return b.id.localeCompare(a.id); // Newer/lexicographically later first
-      });
-
-    return NextResponse.json({ models: chatModels });
-  } catch (e) {
-    console.error("Error fetching OpenAI models:", e);
     return NextResponse.json(
-      { error: (e as Error).message },
+      { models, error: null },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+        },
+      }
+    );
+  } catch (e) {
+    console.error("Error in OpenAI models endpoint:", e);
+    return NextResponse.json(
+      { models: [], error: (e as Error).message },
       { status: 500 }
     );
   }

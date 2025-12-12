@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_ANTHROPIC_MODEL,
+  DEFAULT_GOOGLE_MODEL,
+  validateModelId,
+  type ProviderId,
+} from "@/lib/model-catalog";
 
-type Model = "openai" | "anthropic" | "google";
+type Model = ProviderId;
 
 type ModelSelection = {
   openai: string | null;
@@ -23,72 +30,133 @@ function buildContext(files: Array<{ path: string; content: string }>): string {
   return files.map((f) => `// ${f.path}\n${f.content}`).join("\n\n");
 }
 
-const DEFAULT_OPENAI_CHAT_MODEL = "gpt-5.2-chat-latest";
-
+/**
+ * Pick a valid OpenAI chat model ID.
+ * Validates against the allowlist and falls back to default if invalid.
+ */
 function pickOpenAIChatModelId(requested: string | null | undefined): string {
-  // This app uses OpenAI's /v1/chat/completions endpoint, so we must only send chat-capable models.
-  // Some GPT-5 IDs returned by /v1/models (e.g., gpt-5.2, gpt-5.2-pro) are not chat models.
-  if (!requested) return DEFAULT_OPENAI_CHAT_MODEL;
-  if (requested.startsWith("gpt-5") && requested.includes("chat")) return requested;
-  return DEFAULT_OPENAI_CHAT_MODEL;
+  return validateModelId("openai", requested);
 }
 
 async function callOpenAI(system: string, user: string, modelId: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY missing");
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: modelId || DEFAULT_OPENAI_CHAT_MODEL,
-      messages: [{ role: "system", content: system }, { role: "user", content: user }],
-    }),
-  });
-  if (!res.ok) throw new Error(`OpenAI error: ${await res.text()}`);
-  const data = (await res.json()) as any;
-  return data.choices[0]?.message?.content ?? "";
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+  
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: modelId || DEFAULT_OPENAI_MODEL,
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+      }),
+      signal: controller.signal,
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`OpenAI API error (${res.status}):`, errorText);
+      throw new Error(`OpenAI error: ${res.status} - ${errorText}`);
+    }
+    
+    const data = (await res.json()) as any;
+    return data.choices[0]?.message?.content ?? "";
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error("OpenAI request timeout");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function callAnthropic(system: string, user: string, modelId: string): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY missing");
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "Content-Type": "application/json",
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: modelId || "claude-sonnet-4-5",
-      max_tokens: 4096,
-      system,
-      messages: [{ role: "user", content: user }],
-    }),
-  });
-  if (!res.ok) throw new Error(`Anthropic error: ${await res.text()}`);
-  const data = (await res.json()) as any;
-  return data.content[0]?.text ?? "";
+  
+  const validatedModelId = validateModelId("anthropic", modelId);
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+  
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: validatedModelId || DEFAULT_ANTHROPIC_MODEL,
+        max_tokens: 4096,
+        system,
+        messages: [{ role: "user", content: user }],
+      }),
+      signal: controller.signal,
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`Anthropic API error (${res.status}):`, errorText);
+      throw new Error(`Anthropic error: ${res.status} - ${errorText}`);
+    }
+    
+    const data = (await res.json()) as any;
+    return data.content[0]?.text ?? "";
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error("Anthropic request timeout");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function callGoogle(system: string, user: string, modelId: string): Promise<string> {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_AI_API_KEY missing");
-  const modelName = modelId || "gemini-2.5-pro";
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: `System: ${system}\n\nUser: ${user}` }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
-    }),
-  });
-  if (!res.ok) throw new Error(`Google error: ${await res.text()}`);
-  const data = (await res.json()) as any;
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  
+  const modelName = modelId || DEFAULT_GOOGLE_MODEL;
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+  
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `System: ${system}\n\nUser: ${user}` }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+      }),
+      signal: controller.signal,
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`Google AI API error (${res.status}):`, errorText);
+      throw new Error(`Google error: ${res.status} - ${errorText}`);
+    }
+    
+    const data = (await res.json()) as any;
+    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error("Google AI request timeout");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function runModel(
