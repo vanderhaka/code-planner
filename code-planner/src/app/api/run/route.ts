@@ -13,6 +13,7 @@ type RunRequest = {
     systemPrompt: string;
     userPrompt: string;
   };
+  userMessage?: string;
   files: Array<{ path: string; content: string }>;
   models: Model[];
   selectedModels: ModelSelection;
@@ -135,13 +136,16 @@ Synthesized plan:`;
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as RunRequest;
-    const { template, files, models, selectedModels } = body;
+    const { template, files, models, selectedModels, userMessage } = body;
     if (!template?.systemPrompt || !template?.userPrompt || !files?.length || !models?.length) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
     const context = buildContext(files);
-    const userPromptWithFiles = `${template.userPrompt}\n\n${context}`;
+    const trimmedUserMessage = userMessage?.trim();
+    const userPromptWithFiles = trimmedUserMessage
+      ? `${template.userPrompt}\n\nUser goal:\n${trimmedUserMessage}\n\n${context}`
+      : `${template.userPrompt}\n\n${context}`;
 
     // Run all models in parallel
     const results = await Promise.all(

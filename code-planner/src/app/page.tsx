@@ -19,6 +19,7 @@ type RunResponse = { results: RunResult[]; consolidated: string };
 export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [files, setFiles] = useState<Array<{ path: string; content: string }>>([]);
+  const [userMessage, setUserMessage] = useState<string>("");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<RunResponse | null>(null);
@@ -70,6 +71,7 @@ export default function Home() {
 
   const resetRunState = () => {
     setFiles([]);
+    setUserMessage("");
     setRunning(false);
     setError(null);
     setResults(null);
@@ -158,6 +160,7 @@ export default function Home() {
             systemPrompt: selectedTemplate.systemPrompt,
             userPrompt: selectedTemplate.userPrompt,
           },
+              userMessage,
           files,
           models: settings.models,
           selectedModels: settings.selectedModels,
@@ -345,7 +348,12 @@ export default function Home() {
             </div>
 
             <div className="space-y-8">
-              <RepoBrowser repo={activeChat?.repo ?? null} onFilesFetched={setFiles} />
+              <RepoBrowser
+                repo={activeChat?.repo ?? null}
+                onFilesFetched={setFiles}
+                userMessage={userMessage}
+                onUserMessageChange={setUserMessage}
+              />
             </div>
           </div>
         </div>
