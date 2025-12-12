@@ -34,6 +34,26 @@ export async function GET(
     );
   }
 
-  const data = (await res.json()) as unknown;
+  const data = (await res.json()) as {
+    tree?: Array<unknown>;
+    truncated?: boolean;
+  };
+
+  // Check for tree size limits
+  const MAX_TREE_ITEMS = 50_000;
+  const treeItems = data.tree ?? [];
+  
+  if (data.truncated || treeItems.length > MAX_TREE_ITEMS) {
+    return Response.json(
+      {
+        error: "Repository tree too large",
+        message: `Tree exceeds maximum size (${MAX_TREE_ITEMS} items). Please use a more specific branch or path.`,
+        truncated: data.truncated ?? false,
+        itemCount: treeItems.length,
+      },
+      { status: 422 }
+    );
+  }
+
   return Response.json(data);
 }

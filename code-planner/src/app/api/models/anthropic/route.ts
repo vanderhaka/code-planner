@@ -11,7 +11,7 @@ import { ANTHROPIC_MODELS } from "@/lib/model-catalog";
 export async function GET() {
   try {
     // Return allowlist from centralized catalog
-    const models = ANTHROPIC_MODELS.sort((a, b) => {
+    const models = [...ANTHROPIC_MODELS].sort((a, b) => {
       // Prioritize Claude 4 models, then 3.7, then 3.5
       if (a.id.startsWith("claude-opus-4") || a.id.startsWith("claude-sonnet-4")) {
         if (!b.id.startsWith("claude-opus-4") && !b.id.startsWith("claude-sonnet-4")) return -1;

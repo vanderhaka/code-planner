@@ -1,7 +1,9 @@
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { type ProviderId, resolveModelForProvider } from "@/lib/model-catalog";
+import { buildContext, callProvider } from "@/lib/providers";
 
-type Provider = "openai" | "anthropic" | "google";
+type Provider = ProviderId;
 
 type ModelSelection = {
   openai: string | null;
@@ -34,13 +36,13 @@ type PipelineRunRequest = {
 
 type TreeItem = { path: string; type: "blob" | "tree" | string; sha: string };
 
-const DEFAULT_OPENAI_CHAT_MODEL = "gpt-5.2-chat-latest";
-
-function pickOpenAIChatModelId(requested: string | null | undefined): string {
-  if (!requested) return DEFAULT_OPENAI_CHAT_MODEL;
-  if (requested.startsWith("gpt-5") && requested.includes("chat")) return requested;
-  return DEFAULT_OPENAI_CHAT_MODEL;
-}
+type ImproverResponse = {
+  improved_user_prompt?: string;
+  search?: {
+    keywords?: string[];
+    max_files?: number;
+  };
+};
 
 function safeJsonExtract(text: string): unknown | null {
   // Try direct parse first
@@ -59,6 +61,29 @@ function safeJsonExtract(text: string): unknown | null {
     }
     return null;
   }
+}
+
+function validateImproverResponse(parsed: unknown): ImproverResponse | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  if (!("improved_user_prompt" in parsed) && !("search" in parsed)) return null;
+  
+  const result: ImproverResponse = {};
+  
+  if ("improved_user_prompt" in parsed && typeof parsed.improved_user_prompt === "string") {
+    result.improved_user_prompt = parsed.improved_user_prompt;
+  }
+  
+  if ("search" in parsed && parsed.search && typeof parsed.search === "object") {
+    const search = parsed.search as any;
+    if (Array.isArray(search.keywords) && search.keywords.every((k: any) => typeof k === "string")) {
+      result.search = { keywords: search.keywords };
+    }
+    if (typeof search.max_files === "number" && Number.isFinite(search.max_files)) {
+      result.search = { ...result.search, max_files: search.max_files };
+    }
+  }
+  
+  return result;
 }
 
 function extractKeywordsFallback(goal: string): string[] {
@@ -135,82 +160,28 @@ function scorePath(path: string, keywords: string[]): number {
   return score;
 }
 
-function buildContext(files: Array<{ path: string; content: string }>): string {
-  return files.map((f) => `// ${f.path}\n${f.content}`).join("\n\n");
-}
-
-async function callOpenAI(system: string, user: string, modelId: string): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY missing");
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: pickOpenAIChatModelId(modelId),
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
-  });
-  if (!res.ok) throw new Error(`OpenAI error: ${await res.text()}`);
-  const data = (await res.json()) as any;
-  return data.choices[0]?.message?.content ?? "";
-}
-
-async function callAnthropic(system: string, user: string, modelId: string): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY missing");
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "Content-Type": "application/json",
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: modelId || "claude-sonnet-4-5",
-      max_tokens: 4096,
-      system,
-      messages: [{ role: "user", content: user }],
-    }),
-  });
-  if (!res.ok) throw new Error(`Anthropic error: ${await res.text()}`);
-  const data = (await res.json()) as any;
-  return data.content[0]?.text ?? "";
-}
-
-async function callGoogle(system: string, user: string, modelId: string): Promise<string> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) throw new Error("GOOGLE_AI_API_KEY missing");
-  const modelName = modelId || "gemini-2.5-pro";
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `System: ${system}\n\nUser: ${user}` }] }],
-        generationConfig: { maxOutputTokens: 4096 },
-      }),
-    },
-  );
-  if (!res.ok) throw new Error(`Google error: ${await res.text()}`);
-  const data = (await res.json()) as any;
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-}
-
-async function callProvider(provider: Provider, system: string, user: string, modelId: string | null): Promise<string> {
-  switch (provider) {
-    case "openai":
-      return callOpenAI(system, user, modelId ?? DEFAULT_OPENAI_CHAT_MODEL);
-    case "anthropic":
-      return callAnthropic(system, user, modelId ?? "");
-    case "google":
-      return callGoogle(system, user, modelId ?? "");
-    default:
-      throw new Error(`Unsupported provider: ${provider}`);
+async function fetchFilesWithConcurrency(
+  paths: string[],
+  fetcher: (path: string) => Promise<string>,
+  concurrency = 4
+): Promise<Array<{ path: string; content: string }>> {
+  const results: Array<{ path: string; content: string }> = [];
+  for (let i = 0; i < paths.length; i += concurrency) {
+    const batch = paths.slice(i, i + concurrency);
+    const batchResults = await Promise.all(
+      batch.map(async (path) => {
+        try {
+          const content = await fetcher(path);
+          return { path, content };
+        } catch (e) {
+          console.warn(`Failed to fetch ${path}:`, e);
+          return null;
+        }
+      })
+    );
+    results.push(...batchResults.filter((r): r is { path: string; content: string } => r !== null && r.content.length > 0));
   }
+  return results;
 }
 
 async function fetchGitHubJson(sessionToken: string, url: string): Promise<any> {
@@ -231,6 +202,8 @@ async function fetchRepoTree(sessionToken: string, owner: string, repo: string, 
 }
 
 async function fetchRepoFile(sessionToken: string, owner: string, repo: string, path: string, ref: string): Promise<string> {
+  // Path should be passed raw - GitHub API handles encoding
+  // Only encode the ref query parameter
   const data = await fetchGitHubJson(
     sessionToken,
     `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`,
@@ -256,26 +229,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
+    // Validate provider strings
+    const VALID_PROVIDERS = new Set<ProviderId>(["openai", "anthropic", "google"]);
+    const invalidProviders = models.filter((m) => !VALID_PROVIDERS.has(m));
+    if (invalidProviders.length > 0) {
+      return NextResponse.json(
+        { error: `Invalid providers: ${invalidProviders.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
     const [owner, repoName] = repo.split("/");
     if (!owner || !repoName) return NextResponse.json({ error: "Invalid repo" }, { status: 400 });
 
     // 1) Prompt improver (JSON)
     const improverProvider = pipeline?.promptImprover?.provider ?? "openai";
-    const improverModelId =
-      pipeline?.promptImprover?.modelId ??
-      (improverProvider === "openai" ? DEFAULT_OPENAI_CHAT_MODEL : selectedModels[improverProvider] ?? null);
+    const improverModelId = resolveModelForProvider(
+      improverProvider,
+      selectedModels || { openai: null, anthropic: null, google: null },
+      pipeline?.promptImprover?.modelId ?? null
+    );
 
     const improverUser = `User goal:\n${userMessage.trim()}\n\nTemplate user prompt (constraints / desired output):\n${template.userPrompt}\n\nReturn ONLY valid JSON with this schema:\n{\n  "improved_user_prompt": string,\n  "search": {\n    "keywords": string[],\n    "max_files": number\n  }\n}\n\nGuidelines:\n- improved_user_prompt should incorporate the goal + the template user prompt constraints.\n- keywords should be short identifiers to locate relevant code (components, routes, file names, functions).\n- max_files should be 8-20.\n`;
 
     const improverRaw = await callProvider(improverProvider, template.systemPrompt, improverUser, improverModelId);
-    const improverJson = safeJsonExtract(improverRaw) as any;
+    const improverParsed = safeJsonExtract(improverRaw);
+    const improverJson = validateImproverResponse(improverParsed);
+    
     const improvedUserPrompt: string =
-      typeof improverJson?.improved_user_prompt === "string"
-        ? improverJson.improved_user_prompt
-        : `${template.userPrompt}\n\nUser goal:\n${userMessage.trim()}`;
+      improverJson?.improved_user_prompt ?? `${template.userPrompt}\n\nUser goal:\n${userMessage.trim()}`;
 
     const keywords: string[] =
-      Array.isArray(improverJson?.search?.keywords) && improverJson.search.keywords.every((k: any) => typeof k === "string")
+      improverJson?.search?.keywords && improverJson.search.keywords.length > 0
         ? improverJson.search.keywords.slice(0, 20)
         : extractKeywordsFallback(userMessage);
 
@@ -305,22 +290,33 @@ export async function POST(req: NextRequest) {
 
     // 3) Load file contents (caps)
     const MAX_TOTAL_CHARS = 220_000;
+    const MAX_FILE_CHARS = 30_000;
     const selectedPaths: string[] = [];
     const files: Array<{ path: string; content: string }> = [];
     let totalChars = 0;
 
-    for (const p of ranked) {
-      if (files.length >= maxFiles) break;
-      const encodedPath = p
-        .split("/")
-        .map((seg) => encodeURIComponent(seg))
-        .join("/");
-      const content = await fetchRepoFile(session.accessToken, owner, repoName, encodedPath, branch);
-      if (!content) continue;
-      if (totalChars + content.length > MAX_TOTAL_CHARS) continue;
-      totalChars += content.length;
-      selectedPaths.push(p);
-      files.push({ path: p, content });
+    // Fetch files with concurrency limit
+    const pathsToFetch = ranked.slice(0, maxFiles);
+    const accessToken = session.accessToken; // Type narrowing: already checked above
+    const fetchedFiles = await fetchFilesWithConcurrency(
+      pathsToFetch,
+      async (path) => {
+        const content = await fetchRepoFile(accessToken, owner, repoName, path, branch);
+        // Skip oversized files
+        if (content.length > MAX_FILE_CHARS) {
+          return "";
+        }
+        return content;
+      },
+      4 // concurrency limit
+    );
+
+    // Apply total character limit
+    for (const file of fetchedFiles) {
+      if (totalChars + file.content.length > MAX_TOTAL_CHARS) break;
+      totalChars += file.content.length;
+      selectedPaths.push(file.path);
+      files.push(file);
     }
 
     if (files.length === 0) {
@@ -333,7 +329,11 @@ export async function POST(req: NextRequest) {
 
     const results = await Promise.all(
       models.map(async (m) => {
-        const modelId = selectedModels[m] ?? null;
+        const modelId = resolveModelForProvider(
+          m,
+          selectedModels || { openai: null, anthropic: null, google: null },
+          null
+        );
         const output = await callProvider(m, template.systemPrompt, finalUserPrompt, modelId);
         return { model: m, output };
       }),
@@ -348,9 +348,11 @@ ${results.map((r) => `--- ${r.model.toUpperCase()} ---\n${r.output}`).join("\n\n
 Synthesized plan:`;
 
     const consolidatorProvider = pipeline?.consolidator?.provider ?? "openai";
-    const consolidatorModelId =
-      pipeline?.consolidator?.modelId ??
-      (consolidatorProvider === "openai" ? DEFAULT_OPENAI_CHAT_MODEL : selectedModels[consolidatorProvider] ?? null);
+    const consolidatorModelId = resolveModelForProvider(
+      consolidatorProvider,
+      selectedModels || { openai: null, anthropic: null, google: null },
+      pipeline?.consolidator?.modelId ?? null
+    );
     const consolidated = await callProvider(consolidatorProvider, template.systemPrompt, consolidationPrompt, consolidatorModelId);
 
     return NextResponse.json({

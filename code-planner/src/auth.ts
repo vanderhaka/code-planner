@@ -16,11 +16,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (typeof account?.access_token === "string") {
         token.accessToken = account.access_token;
       }
+      if (account?.provider) {
+        token.provider = account.provider;
+      }
       return token;
     },
     async session({ session, token }) {
       session.accessToken =
         typeof token.accessToken === "string" ? token.accessToken : undefined;
+      session.provider =
+        typeof token.provider === "string" ? token.provider : undefined;
       return session;
     },
   },

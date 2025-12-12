@@ -107,6 +107,7 @@ export function SettingsModal({ open, settings, onClose, onSave }: Props) {
           ...settings.selectedModels,
           [id]: null,
         },
+        pipeline: settings.pipeline,
       });
     } else {
       next.add(id);
@@ -117,6 +118,7 @@ export function SettingsModal({ open, settings, onClose, onSave }: Props) {
       onSave({
         models: Array.from(next),
         selectedModels: settings.selectedModels,
+        pipeline: settings.pipeline,
       });
     }
   };

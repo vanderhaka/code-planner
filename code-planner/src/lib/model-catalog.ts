@@ -95,3 +95,16 @@ export function validateModelId(provider: ProviderId, modelId: string | null | u
   }
 }
 
+/**
+ * Resolve the model ID for a provider, considering override, selected models, and validation.
+ * This centralizes model selection logic used across routes.
+ */
+export function resolveModelForProvider(
+  provider: ProviderId,
+  selectedModels: Record<ProviderId, string | null>,
+  override?: string | null
+): string {
+  const requested = override ?? selectedModels[provider];
+  return validateModelId(provider, requested);
+}
+
