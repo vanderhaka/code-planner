@@ -32,7 +32,7 @@ async function callOpenAI(system: string, user: string, modelId: string): Promis
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: modelId || "gpt-4o",
+      model: modelId || "gpt-5.2",
       messages: [{ role: "system", content: system }, { role: "user", content: user }],
       temperature: 0.3,
     }),

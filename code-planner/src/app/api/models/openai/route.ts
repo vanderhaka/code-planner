@@ -25,25 +25,19 @@ export async function GET() {
 
     const data = (await res.json()) as { data: Array<{ id: string; object: string; owned_by: string }> };
 
-    // Filter to chat-compatible GPT models, exclude deprecated and embedding models
+    // Filter to GPT-5 series models only
     const chatModels = data.data
       .filter(
         (model) =>
-          (model.id.startsWith("gpt-4") || model.id.startsWith("gpt-3.5-turbo")) &&
+          model.id.startsWith("gpt-5") &&
           !model.id.includes("deprecated") &&
-          !model.id.includes("embedding") &&
           model.object === "model"
       )
       .map((model) => ({
         id: model.id,
         name: model.id,
       }))
-      .sort((a, b) => {
-        // Sort GPT-4 models first, then GPT-3.5
-        if (a.id.startsWith("gpt-4") && !b.id.startsWith("gpt-4")) return -1;
-        if (!a.id.startsWith("gpt-4") && b.id.startsWith("gpt-4")) return 1;
-        return a.id.localeCompare(b.id);
-      });
+      .sort((a, b) => a.id.localeCompare(b.id));
 
     return NextResponse.json({ models: chatModels });
   } catch (e) {
