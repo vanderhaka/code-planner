@@ -236,36 +236,76 @@ export default function Home() {
 
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_1fr]">
             <div className="space-y-8">
-              {selectedTemplate ? (
-                <div className="card">
-                  <div className="card-header">
-                    <h2 className="card-title">Run: {selectedTemplate.name}</h2>
-                    <p className="card-subtitle">
-                      Models: <span className="font-medium text-neutral-900">{settings.models.join(", ")}</span>
-                    </p>
-                  </div>
-                  <div className="p-5">
-                    <button
-                      onClick={handleRun}
-                      disabled={running || files.length === 0 || settings.models.length === 0}
-                      className="btn btn-primary disabled:opacity-50"
-                      title={files.length === 0 ? "Select and fetch files first" : settings.models.length === 0 ? "Enable at least one model in Settings" : undefined}
-                    >
-                      {running ? "Running…" : `Run "${selectedTemplate.name}"`}
-                    </button>
-                    <div className="mt-2 text-sm text-neutral-600">
-                      Files loaded: <span className="font-medium text-neutral-900">{files.length}</span>
+              <div className="card">
+                <div className="card-header">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="card-title">Run</h2>
+                      <p className="card-subtitle">
+                        Models: <span className="font-medium text-neutral-900">{settings.models.join(", ")}</span>
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button type="button" className="btn" onClick={handleNewTemplate}>
+                        New template
+                      </button>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="card">
-                  <div className="card-header">
-                    <h2 className="card-title">Run</h2>
-                    <p className="card-subtitle">Pick a template from the sidebar to enable running reviews.</p>
+
+                  <div className="mt-3">
+                    <label htmlFor="run-template-select" className="mb-1 block text-xs font-medium text-neutral-700">
+                      Template
+                    </label>
+                    <select
+                      id="run-template-select"
+                      className="input text-xs"
+                      value={selectedTemplateId ?? ""}
+                      onChange={(e) => setSelectedTemplateId(e.target.value || null)}
+                      disabled={templates.length === 0}
+                    >
+                      <option value="">{templates.length === 0 ? "No templates yet" : "Select a template"}</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    {!selectedTemplate ? (
+                      <div className="mt-2 text-xs text-neutral-600">
+                        Pick a template to enable running reviews.
+                      </div>
+                    ) : null}
                   </div>
                 </div>
-              )}
+
+                <div className="p-5">
+                  <button
+                    onClick={handleRun}
+                    disabled={!selectedTemplate || running || files.length === 0 || settings.models.length === 0}
+                    className="btn btn-primary disabled:opacity-50"
+                    title={
+                      !selectedTemplate
+                        ? "Select a template first"
+                        : files.length === 0
+                          ? "Select and fetch files first"
+                          : settings.models.length === 0
+                            ? "Enable at least one model in Settings"
+                            : undefined
+                    }
+                  >
+                    {running
+                      ? "Running…"
+                      : selectedTemplate
+                        ? `Run "${selectedTemplate.name}"`
+                        : "Run"}
+                  </button>
+                  <div className="mt-2 text-sm text-neutral-600">
+                    Files loaded: <span className="font-medium text-neutral-900">{files.length}</span>
+                  </div>
+                </div>
+              </div>
 
               {error ? (
                 <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
