@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply min-h-screen bg-linear-to-b from-neutral-50 via-white to-neutral-100 text-neutral-900;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-900 shadow-sm transition hover:bg-neutral-50 active:translate-y-px;
+  }
+
+  .btn-primary {
+    @apply border-neutral-900 bg-neutral-900 text-white hover:bg-neutral-800;
+  }
+
+  .btn-danger {
+    @apply border-red-200 bg-white text-red-700 hover:bg-red-50;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 shadow-sm outline-none transition focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10;
+  }
+
+  .card {
+    @apply overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm;
+  }
+
+  .card-header {
+    @apply border-b border-neutral-100 bg-white px-5 py-4;
+  }
+
+  .card-title {
+    @apply text-sm font-semibold text-neutral-900;
+  }
+
+  .card-subtitle {
+    @apply mt-1 text-sm text-neutral-600;
+  }
+}
