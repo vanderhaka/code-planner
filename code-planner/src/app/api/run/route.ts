@@ -22,6 +22,16 @@ function buildContext(files: Array<{ path: string; content: string }>): string {
   return files.map((f) => `// ${f.path}\n${f.content}`).join("\n\n");
 }
 
+const DEFAULT_OPENAI_CHAT_MODEL = "gpt-5.2-chat-latest";
+
+function pickOpenAIChatModelId(requested: string | null | undefined): string {
+  // This app uses OpenAI's /v1/chat/completions endpoint, so we must only send chat-capable models.
+  // Some GPT-5 IDs returned by /v1/models (e.g., gpt-5.2, gpt-5.2-pro) are not chat models.
+  if (!requested) return DEFAULT_OPENAI_CHAT_MODEL;
+  if (requested.startsWith("gpt-5") && requested.includes("chat")) return requested;
+  return DEFAULT_OPENAI_CHAT_MODEL;
+}
+
 async function callOpenAI(system: string, user: string, modelId: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY missing");
@@ -32,7 +42,7 @@ async function callOpenAI(system: string, user: string, modelId: string): Promis
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: modelId || "gpt-5.2-chat-latest",
+      model: modelId || DEFAULT_OPENAI_CHAT_MODEL,
       messages: [{ role: "system", content: system }, { role: "user", content: user }],
       temperature: 0.3,
     }),
@@ -91,7 +101,7 @@ async function runModel(
   const modelId = selectedModels[model];
   switch (model) {
     case "openai":
-      output = await callOpenAI(system, user, modelId || "");
+      output = await callOpenAI(system, user, pickOpenAIChatModelId(modelId));
       break;
     case "anthropic":
       output = await callAnthropic(system, user, modelId || "");
@@ -119,8 +129,7 @@ ${responses.map((r) => `--- ${r.model.toUpperCase()} ---\n${r.output}`).join("\n
 Synthesized plan:`;
 
   // Use OpenAI for consolidation by default, fallback to first selected model if OpenAI not available
-  const consolidationModelId = selectedModels.openai || "";
-  return callOpenAI(system, consolidationPrompt, consolidationModelId);
+  return callOpenAI(system, consolidationPrompt, pickOpenAIChatModelId(selectedModels.openai));
 }
 
 export async function POST(req: NextRequest) {

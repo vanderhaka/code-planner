@@ -25,28 +25,27 @@ export async function GET() {
 
     const data = (await res.json()) as { data: Array<{ id: string; object: string; owned_by: string }> };
 
-    // Filter to GPT-5 series CHAT models only
-    // Only include models with "chat", "pro", or "mini" - these are verified chat-compatible
-    // Exclude codex models (code completion, not chat)
+    // Filter to GPT-5 series CHAT models only.
+    // OpenAI's /v1/models includes many non-chat models; our app uses /v1/chat/completions.
+    // To avoid "This is not a chat model" errors, only include explicit chat models.
     const chatModels = data.data
       .filter(
         (model) =>
           model.id.startsWith("gpt-5") &&
-          !model.id.includes("deprecated") &&
-          !model.id.includes("codex") &&
           model.object === "model" &&
-          (model.id.includes("chat") || model.id.includes("pro") || model.id.includes("mini"))
+          !model.id.includes("deprecated") &&
+          model.id.includes("chat")
       )
       .map((model) => ({
         id: model.id,
         name: model.id,
       }))
       .sort((a, b) => {
-        // Prioritize chat-latest models, then pro, then mini
-        const aScore = a.id.includes("chat-latest") ? 0 : a.id.includes("pro") ? 1 : 2;
-        const bScore = b.id.includes("chat-latest") ? 0 : b.id.includes("pro") ? 1 : 2;
+        // Prioritize chat-latest models
+        const aScore = a.id.includes("chat-latest") ? 0 : 1;
+        const bScore = b.id.includes("chat-latest") ? 0 : 1;
         if (aScore !== bScore) return aScore - bScore;
-        return b.id.localeCompare(a.id); // Newer versions first
+        return b.id.localeCompare(a.id); // Newer/lexicographically later first
       });
 
     return NextResponse.json({ models: chatModels });
