@@ -13,14 +13,8 @@ export async function GET() {
   try {
     // Return allowlist directly - no need to call /v1/models
     // This ensures we only return models that work with /v1/chat/completions
-    const models = OPENAI_CHAT_MODELS.sort((a, b) => {
-      // Prioritize newer models (gpt-4o, gpt-4-turbo) over older ones
-      if (a.id.startsWith("gpt-4o") && !b.id.startsWith("gpt-4o")) return -1;
-      if (!a.id.startsWith("gpt-4o") && b.id.startsWith("gpt-4o")) return 1;
-      if (a.id.startsWith("gpt-4-turbo") && !b.id.startsWith("gpt-4-turbo")) return -1;
-      if (!a.id.startsWith("gpt-4-turbo") && b.id.startsWith("gpt-4-turbo")) return 1;
-      return b.id.localeCompare(a.id); // Newer/lexicographically later first
-    });
+    // Models are already ordered in the catalog (newest first), just copy array
+    const models = [...OPENAI_CHAT_MODELS];
 
     return NextResponse.json(
       { models, error: null },
