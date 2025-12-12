@@ -45,7 +45,6 @@ async function callOpenAI(system: string, user: string, modelId: string): Promis
     body: JSON.stringify({
       model: modelId || DEFAULT_OPENAI_CHAT_MODEL,
       messages: [{ role: "system", content: system }, { role: "user", content: user }],
-      temperature: 0.3,
     }),
   });
   if (!res.ok) throw new Error(`OpenAI error: ${await res.text()}`);
