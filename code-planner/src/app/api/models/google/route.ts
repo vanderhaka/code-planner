@@ -73,14 +73,7 @@ export async function GET() {
           return b.id.localeCompare(a.id); // Newer/lexicographically later first
         }) ?? [];
 
-    return NextResponse.json(
-      { models: generativeModels, error: null },
-      {
-        headers: {
-          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
-        },
-      }
-    );
+    return NextResponse.json({ models: generativeModels, error: null });
   } catch (e) {
     console.error("Error fetching Google models:", e);
     return NextResponse.json(

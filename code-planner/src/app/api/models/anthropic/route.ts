@@ -22,14 +22,7 @@ export async function GET() {
       return b.id.localeCompare(a.id); // Newer/lexicographically later first
     });
 
-    return NextResponse.json(
-      { models, error: null },
-      {
-        headers: {
-          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
-        },
-      }
-    );
+    return NextResponse.json({ models, error: null });
   } catch (e) {
     console.error("Error in Anthropic models endpoint:", e);
     return NextResponse.json(

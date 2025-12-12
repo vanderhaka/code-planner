@@ -16,14 +16,7 @@ export async function GET() {
     // Models are already ordered in the catalog (newest first), just copy array
     const models = [...OPENAI_CHAT_MODELS];
 
-    return NextResponse.json(
-      { models, error: null },
-      {
-        headers: {
-          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
-        },
-      }
-    );
+    return NextResponse.json({ models, error: null });
   } catch (e) {
     console.error("Error in OpenAI models endpoint:", e);
     return NextResponse.json(
