@@ -3,7 +3,6 @@ export type PromptTemplate = {
   name: string;
   description: string;
   systemPrompt: string;
-  userPrompt: string;
 };
 
 const STORAGE_KEY = "prompt-templates";

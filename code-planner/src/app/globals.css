@@ -42,4 +42,21 @@
   .card-subtitle {
     @apply mt-1 text-sm text-neutral-600;
   }
+
+  .model-selector {
+    max-height: 500px;
+    opacity: 1;
+    overflow: hidden;
+    transition: max-height 200ms ease-out, opacity 200ms ease-out;
+  }
+
+  .model-selector-enter {
+    max-height: 0;
+    opacity: 0;
+  }
+
+  .model-selector-enter-active {
+    max-height: 500px;
+    opacity: 1;
+  }
 }

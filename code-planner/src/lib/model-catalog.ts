@@ -51,7 +51,7 @@ export const ANTHROPIC_MODELS: ModelOption[] = [
 /**
  * Default model IDs for each provider.
  */
-export const DEFAULT_OPENAI_MODEL = "gpt-5.2-chat-latest";
+export const DEFAULT_OPENAI_MODEL = "gpt-4"; // Fallback to a real OpenAI model
 export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5";
 export const DEFAULT_GOOGLE_MODEL = "gemini-2.5-pro";
 
@@ -80,8 +80,29 @@ export function validateModelId(provider: ProviderId, modelId: string | null | u
   
   switch (provider) {
     case "openai": {
+      // Check if it's in the allowlist first
       const isValid = OPENAI_CHAT_MODELS.some((m) => m.id === modelId);
-      return isValid ? modelId : getDefaultModel(provider);
+      if (isValid) {
+        return modelId;
+      }
+      
+      // Reject known completion models (not chat models)
+      const completionModels = ["text-davinci", "text-curie", "text-babbage", "text-ada", "davinci", "curie", "babbage", "ada"];
+      if (completionModels.some(prefix => modelId.startsWith(prefix))) {
+        console.warn(`[Model Catalog] Rejected completion model "${modelId}", using default chat model`);
+        return getDefaultModel(provider);
+      }
+      
+      // If not in allowlist, check if it looks like a valid OpenAI chat model
+      // OpenAI chat models typically start with "gpt-" or "o1-"
+      // We allow these to pass through and let the API validate
+      if (modelId.startsWith("gpt-") || modelId.startsWith("o1-")) {
+        return modelId;
+      }
+      
+      // Fall back to default for unrecognized formats
+      console.warn(`[Model Catalog] Unrecognized OpenAI model format "${modelId}", using default`);
+      return getDefaultModel(provider);
     }
     case "anthropic": {
       const isValid = ANTHROPIC_MODELS.some((m) => m.id === modelId);

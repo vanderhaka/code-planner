@@ -1,7 +1,43 @@
 import { NextResponse } from "next/server";
 
+type ModelListResponse = {
+  models: Array<{ id: string; name: string }>;
+  error: string | null;
+};
+
+type CacheEntry = { data: ModelListResponse; expiry: number };
+
+/**
+ * Simple in-memory cache with TTL for model lists.
+ */
+const cache = new Map<string, CacheEntry>();
+
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCached(key: string): ModelListResponse | null {
+  const cached = cache.get(key);
+  if (cached && Date.now() < cached.expiry) {
+    return cached.data;
+  }
+  cache.delete(key);
+  return null;
+}
+
+function setCached(key: string, data: ModelListResponse) {
+  cache.set(key, {
+    data,
+    expiry: Date.now() + CACHE_TTL_MS,
+  });
+}
+
 export async function GET() {
   try {
+    const cacheKey = "google-models";
+    const cached = getCached(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
+
     const apiKey = process.env.GOOGLE_AI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
@@ -73,7 +109,9 @@ export async function GET() {
           return b.id.localeCompare(a.id); // Newer/lexicographically later first
         }) ?? [];
 
-    return NextResponse.json({ models: generativeModels, error: null });
+    const response = { models: generativeModels, error: null };
+    setCached(cacheKey, response);
+    return NextResponse.json(response);
   } catch (e) {
     console.error("Error fetching Google models:", e);
     return NextResponse.json(

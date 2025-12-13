@@ -20,8 +20,11 @@ export async function GET() {
 
   if (!res.ok) {
     const text = await res.text();
+    // Log full error server-side for debugging
+    console.error(`GitHub repos API error:`, res.status, text);
+    // Return generic error to client (don't leak sensitive GitHub API details)
     return Response.json(
-      { error: "GitHub request failed", status: res.status, body: text },
+      { error: "Failed to fetch repositories" },
       { status: 502 },
     );
   }

@@ -6,6 +6,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     GitHub({
       authorization: {
         params: {
+          // Note: 'repo' scope is required for private repository access.
+          // To reduce scope to read-only, we would need to use GitHub fine-grained tokens
+          // with 'Contents: Read-only' permission, which requires app-level configuration.
+          // For now, 'repo' is necessary to support both public and private repos.
           scope: "read:user user:email repo",
         },
       },

@@ -12,7 +12,7 @@ type Props = {
 export function PromptTemplates({ selectedTemplate, onSelect }: Props) {
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [editing, setEditing] = useState<PromptTemplate | null>(null);
-  const [form, setForm] = useState({ name: "", description: "", systemPrompt: "", userPrompt: "" });
+  const [form, setForm] = useState({ name: "", description: "", systemPrompt: "" });
   const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
@@ -20,7 +20,7 @@ export function PromptTemplates({ selectedTemplate, onSelect }: Props) {
   }, []);
 
   const handleSave = () => {
-    if (!form.name || !form.systemPrompt || !form.userPrompt) return;
+    if (!form.name || !form.systemPrompt) return;
     if (editing) {
       updateTemplate(editing.id, form);
       setEditing(null);
@@ -29,13 +29,13 @@ export function PromptTemplates({ selectedTemplate, onSelect }: Props) {
       onSelect(created);
     }
     setTemplates(getTemplates());
-    setForm({ name: "", description: "", systemPrompt: "", userPrompt: "" });
+    setForm({ name: "", description: "", systemPrompt: "" });
     setShowForm(false);
   };
 
   const handleEdit = (t: PromptTemplate) => {
     setEditing(t);
-    setForm({ name: t.name, description: t.description, systemPrompt: t.systemPrompt, userPrompt: t.userPrompt });
+    setForm({ name: t.name, description: t.description, systemPrompt: t.systemPrompt });
     setShowForm(true);
   };
 
@@ -55,7 +55,7 @@ export function PromptTemplates({ selectedTemplate, onSelect }: Props) {
         <button
           onClick={() => {
             setEditing(null);
-            setForm({ name: "", description: "", systemPrompt: "", userPrompt: "" });
+            setForm({ name: "", description: "", systemPrompt: "" });
             setShowForm(true);
           }}
           className="btn"
@@ -89,12 +89,6 @@ export function PromptTemplates({ selectedTemplate, onSelect }: Props) {
               onChange={(e) => setForm({ ...form, systemPrompt: e.target.value })}
               className="input min-h-28"
             />
-            <textarea
-              placeholder="User prompt (will receive file contents and context)"
-              value={form.userPrompt}
-              onChange={(e) => setForm({ ...form, userPrompt: e.target.value })}
-              className="input min-h-28"
-            />
 
             <div className="flex items-center gap-2">
               <button onClick={handleSave} className="btn btn-primary">
@@ -104,7 +98,7 @@ export function PromptTemplates({ selectedTemplate, onSelect }: Props) {
                 onClick={() => {
                   setEditing(null);
                   setShowForm(false);
-                  setForm({ name: "", description: "", systemPrompt: "", userPrompt: "" });
+                  setForm({ name: "", description: "", systemPrompt: "" });
                 }}
                 className="btn"
               >

@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { type ProviderId } from "@/lib/model-catalog";
 import { buildContext, callProvider } from "@/lib/providers";
@@ -13,7 +14,6 @@ type ModelSelection = {
 type RunRequest = {
   template: {
     systemPrompt: string;
-    userPrompt: string;
   };
   userMessage?: string;
   files: Array<{ path: string; content: string }>;
@@ -73,9 +73,15 @@ Synthesized plan:`;
 
 export async function POST(req: NextRequest) {
   try {
+    // Authentication check
+    const session = await auth();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await req.json()) as RunRequest;
     const { template, files, models, selectedModels, userMessage } = body;
-    if (!template?.systemPrompt || !template?.userPrompt || !files?.length || !models?.length) {
+    if (!template?.systemPrompt || !files?.length || !models?.length) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
@@ -90,10 +96,8 @@ export async function POST(req: NextRequest) {
     }
 
     const context = buildContext(files);
-    const trimmedUserMessage = userMessage?.trim();
-    const userPromptWithFiles = trimmedUserMessage
-      ? `${template.userPrompt}\n\nUser goal:\n${trimmedUserMessage}\n\n${context}`
-      : `${template.userPrompt}\n\n${context}`;
+    const trimmedUserMessage = userMessage?.trim() || "Review the provided code.";
+    const userPromptWithFiles = `${trimmedUserMessage}\n\n${context}`;
 
     const defaultSelectedModels: ModelSelection = {
       openai: null,

@@ -1,3 +1,9 @@
+import type { ReviewAgent } from "./review-modes";
+import { DEFAULT_AGENT_CONFIG } from "./review-modes";
+
+// Re-export ReviewAgent for convenience
+export type { ReviewAgent };
+
 export type ModelId = "openai" | "anthropic" | "google";
 
 export type ModelSelection = {
@@ -16,10 +22,17 @@ export type PipelineSettings = {
   consolidator: PipelineStageModel;
 };
 
+export type AgentConfig = {
+  enabledAgents: ReviewAgent[];
+  includeConfidence: boolean;
+};
+
 export type Settings = {
   models: ModelId[];
   selectedModels: ModelSelection;
   pipeline: PipelineSettings;
+  reviewMode: "standard" | "agent-based";
+  agentConfig: AgentConfig;
 };
 
 const SETTINGS_KEY = "code-planner-settings";
@@ -35,6 +48,8 @@ const DEFAULT_SETTINGS: Settings = {
     promptImprover: { provider: "openai", modelId: "gpt-5.2-chat-latest" },
     consolidator: { provider: "openai", modelId: "gpt-5.2-chat-latest" },
   },
+  reviewMode: "standard",
+  agentConfig: DEFAULT_AGENT_CONFIG,
 };
 
 export function getSettings(): Settings {
@@ -70,10 +85,28 @@ export function getSettings(): Settings {
         }
       : DEFAULT_SETTINGS.pipeline;
 
+    const reviewMode = parsed.reviewMode === "agent-based" ? "agent-based" : "standard";
+    
+    const agentConfig: AgentConfig = parsed.agentConfig
+      ? {
+          enabledAgents: Array.isArray(parsed.agentConfig.enabledAgents)
+            ? (parsed.agentConfig.enabledAgents.filter((a): a is ReviewAgent =>
+                a === "bug-detector" ||
+                a === "security-auditor" ||
+                a === "performance-optimizer" ||
+                a === "refactoring-architect"
+              ))
+            : DEFAULT_SETTINGS.agentConfig.enabledAgents,
+          includeConfidence: parsed.agentConfig.includeConfidence ?? DEFAULT_SETTINGS.agentConfig.includeConfidence,
+        }
+      : DEFAULT_SETTINGS.agentConfig;
+
     return {
       models: models.length ? models : DEFAULT_SETTINGS.models,
       selectedModels,
       pipeline,
+      reviewMode,
+      agentConfig,
     };
   } catch {
     return DEFAULT_SETTINGS;

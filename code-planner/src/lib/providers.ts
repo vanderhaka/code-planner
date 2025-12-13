@@ -14,6 +14,32 @@ export type ProviderCallOptions = {
   timeout?: number;
 };
 
+// API Response Types
+type OpenAIResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+};
+
+type AnthropicResponse = {
+  content?: Array<{
+    text?: string;
+    type?: string;
+  }>;
+};
+
+type GoogleResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+  }>;
+};
+
 /**
  * Build context string from file array.
  */
@@ -60,7 +86,7 @@ async function callOpenAI(
       throw new Error(`OpenAI error: ${res.status} - ${errorText}`);
     }
 
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as OpenAIResponse;
     if (!data.choices?.length) {
       throw new Error("OpenAI returned no choices");
     }
@@ -118,7 +144,7 @@ async function callAnthropic(
       throw new Error(`Anthropic error: ${res.status} - ${errorText}`);
     }
 
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as AnthropicResponse;
     if (!data.content?.length) {
       throw new Error("Anthropic returned no content");
     }
@@ -173,7 +199,7 @@ async function callGoogle(
       throw new Error(`Google error: ${res.status} - ${errorText}`);
     }
 
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as GoogleResponse;
     if (!data.candidates?.length) {
       throw new Error("Google returned no candidates");
     }
